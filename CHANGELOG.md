@@ -24,3 +24,5 @@ e este projeto segue o [Versionamento Semântico](https://semver.org/lang/pt-BR/
 
 ### Adicionado
 [Não lançado] Criação dos DTOs e configuração do banco de dados
+- Endpoints de usuários (`UsersModule`, `UsersController`, `UsersService`): cadastro e login local, com hash de senha via scrypt.
+

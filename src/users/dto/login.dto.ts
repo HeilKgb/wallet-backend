@@ -1,5 +1,5 @@
 import { Exclude, Expose } from 'class-transformer';
-import { IsEmail, IsNotEmpty, IsString, Length, Matches, MaxLength, MinLength } from 'class-validator';
+import { IsEmail, IsNotEmpty, IsOptional, IsString, Length, Matches, MaxLength, MinLength } from 'class-validator';
 import { AuthProvider, UserStatus } from '../../common/enums';
 
 export class LoginDto {
@@ -69,6 +69,23 @@ export class RegisterSocialDto {
   @IsString()
   @Matches(/^\d{10,15}$/, { message: 'telefone deve conter apenas números (DDI+DDD+número)' })
   phoneNumber: string;
+}
+
+export class UpdateUserDto {
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(150)
+  fullName?: string;
+
+  @IsOptional()
+  @IsEmail({}, { message: 'email inválido' })
+  email?: string;
+
+  @IsOptional()
+  @IsString()
+  @Matches(/^\d{10,15}$/, { message: 'telefone deve conter apenas números (DDI+DDD+número)' })
+  phoneNumber?: string;
 }
 
 
