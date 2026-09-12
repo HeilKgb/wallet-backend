@@ -1,3 +1,5 @@
+import { randomBytes } from 'crypto';
+
 export interface AppConfig {
   port: number;
   auth: {
@@ -20,15 +22,17 @@ export interface AppConfig {
 
 const configuration = (): AppConfig => {
   const jwtSecret = process.env.JWT_SECRET;
-  if (!jwtSecret && process.env.NODE_ENV === 'production') {
-    throw new Error('JWT_SECRET é obrigatório em produção');
+  // Só permitimos fallback em desenvolvimento/teste explícitos; qualquer outro valor (incluindo ausente/staging) falha fechado.
+  const isLocalEnv = process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test';
+  if (!jwtSecret && !isLocalEnv) {
+    throw new Error('JWT_SECRET é obrigatório (defina NODE_ENV=development ou test apenas em ambiente local)');
   }
 
   return {
     port: Number.parseInt(process.env.PORT ?? '3000', 10),
     auth: {
-      // Fallback só serve para desenvolvimento local; nunca deve ser usado em produção.
-      jwtSecret: jwtSecret ?? 'dev-only-insecure-secret-change-me',
+      // Gerado aleatoriamente por processo, nunca compartilhado nem versionado.
+      jwtSecret: jwtSecret ?? randomBytes(32).toString('hex'),
       jwtExpiresInSeconds: Number.parseInt(process.env.JWT_EXPIRES_IN_SECONDS ?? '900', 10),
     },
     database: {

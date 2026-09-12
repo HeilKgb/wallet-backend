@@ -9,7 +9,6 @@ export class HealthController {
 
   constructor(@Inject(PG_POOL) private readonly pool: Pool) {}
 
-  @Public()
   @Get()
   async check() {
     try {

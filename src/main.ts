@@ -14,8 +14,13 @@ function buildHttpsOptions(): HttpsOptions | undefined {
   const certPath = process.env.TLS_CERT_PATH;
   const keyPath = process.env.TLS_KEY_PATH;
 
-  if (!certPath || !keyPath) {
+  if (!certPath && !keyPath) {
     return undefined;
+  }
+
+  // Configuração parcial nunca deve fazer downgrade silencioso para HTTP.
+  if (!certPath || !keyPath) {
+    throw new Error('TLS_CERT_PATH e TLS_KEY_PATH devem ser definidos juntos');
   }
 
   return {
