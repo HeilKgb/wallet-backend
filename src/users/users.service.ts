@@ -1,10 +1,12 @@
 import { randomBytes, randomInt, scrypt as _scrypt, timingSafeEqual } from 'node:crypto';
 import { promisify } from 'node:util';
 import { ConflictException, ForbiddenException, Inject, Injectable, NotFoundException, NotImplementedException, UnauthorizedException } from '@nestjs/common';
+import { JwtService } from '@nestjs/jwt';
 import { plainToInstance } from 'class-transformer';
 import { Pool } from 'pg';
 import { PG_POOL } from '../database/database.constants';
 import { AccountStatus, AuthProvider, UserStatus } from '../common/enums';
+import { AuthResponseDto } from '../auth/dto/auth-response.dto';
 import { LoginDto, LoginSocialDto, RegisterLocalDto, RegisterSocialDto, UpdateUserDto, UserResponseDto } from './dto/login.dto';
 
 const scrypt = promisify(_scrypt);
@@ -24,9 +26,12 @@ interface UserRow {
 
 @Injectable()
 export class UsersService {
-  constructor(@Inject(PG_POOL) private readonly pool: Pool) {}
+  constructor(
+    @Inject(PG_POOL) private readonly pool: Pool,
+    private readonly jwtService: JwtService,
+  ) {}
 
-  async registerLocal(dto: RegisterLocalDto): Promise<UserResponseDto> {
+  async registerLocal(dto: RegisterLocalDto): Promise<AuthResponseDto> {
     const passwordHash = await this.hashPassword(dto.password);
     const client = await this.pool.connect();
 
@@ -48,7 +53,7 @@ export class UsersService {
       );
 
       await client.query('COMMIT');
-      return this.toResponseDto(user);
+      return this.toAuthResponse(user);
     } catch (error: unknown) {
       await client.query('ROLLBACK');
       throw this.mapUniqueViolation(error);
@@ -57,12 +62,12 @@ export class UsersService {
     }
   }
 
-  async registerSocial(_dto: RegisterSocialDto): Promise<UserResponseDto> {
+  async registerSocial(_dto: RegisterSocialDto): Promise<AuthResponseDto> {
     // Requer firebase-admin para validar o idToken e extrair uid/provider com segurança.
     throw new NotImplementedException('Cadastro social ainda não está configurado');
   }
 
-  async login(dto: LoginDto): Promise<UserResponseDto> {
+  async login(dto: LoginDto): Promise<AuthResponseDto> {
     const result = await this.pool.query<UserRow>('SELECT * FROM users WHERE email = $1', [dto.email]);
     const user = result.rows[0];
 
@@ -76,10 +81,10 @@ export class UsersService {
       throw new ForbiddenException('usuário bloqueado');
     }
 
-    return this.toResponseDto(user);
+    return this.toAuthResponse(user);
   }
 
-  async loginSocial(_dto: LoginSocialDto): Promise<UserResponseDto> {
+  async loginSocial(_dto: LoginSocialDto): Promise<AuthResponseDto> {
     // Requer firebase-admin para validar o idToken e extrair uid/provider com segurança.
     throw new NotImplementedException('Login social ainda não está configurado');
   }
@@ -131,6 +136,12 @@ export class UsersService {
     }
 
     return this.toResponseDto(result.rows[0]);
+  }
+
+  private async toAuthResponse(row: UserRow): Promise<AuthResponseDto> {
+    const user = this.toResponseDto(row);
+    const accessToken = await this.jwtService.signAsync({ sub: user.id, email: user.email });
+    return { user, accessToken };
   }
 
   private generateAccountNumber(): string {

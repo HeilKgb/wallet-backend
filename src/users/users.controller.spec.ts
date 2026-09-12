@@ -2,6 +2,7 @@ import { jest } from '@jest/globals';
 import { UsersController } from './users.controller';
 import { UsersService } from './users.service';
 import { LoginDto, LoginSocialDto, RegisterLocalDto, RegisterSocialDto, UpdateUserDto, UserResponseDto } from './dto/login.dto';
+import { AuthResponseDto } from '../auth/dto/auth-response.dto';
 
 const userResponse: UserResponseDto = {
   id: '8f5d5c9e-5d22-4f3f-8f90-7e2d5cf4a123',
@@ -12,6 +13,11 @@ const userResponse: UserResponseDto = {
   authProvider: 'LOCAL' as UserResponseDto['authProvider'],
   status: 'ACTIVE' as UserResponseDto['status'],
   createdAt: new Date('2026-09-12T00:00:00.000Z'),
+};
+
+const authResponse: AuthResponseDto = {
+  user: userResponse,
+  accessToken: 'fake-jwt-token',
 };
 
 describe('UsersController', () => {
@@ -33,33 +39,33 @@ describe('UsersController', () => {
 
   it('deve registrar um usuário local', async () => {
     const dto = { fullName: 'Maria Silva', email: 'maria@example.com' } as RegisterLocalDto;
-    usersService.registerLocal.mockResolvedValue(userResponse);
+    usersService.registerLocal.mockResolvedValue(authResponse);
 
-    await expect(usersController.register(dto)).resolves.toBe(userResponse);
+    await expect(usersController.register(dto)).resolves.toBe(authResponse);
     expect(usersService.registerLocal).toHaveBeenCalledWith(dto);
   });
 
   it('deve registrar um usuário social', async () => {
     const dto = { idToken: 'firebase-token', fullName: 'Maria Silva' } as RegisterSocialDto;
-    usersService.registerSocial.mockResolvedValue(userResponse);
+    usersService.registerSocial.mockResolvedValue(authResponse);
 
-    await expect(usersController.registerSocial(dto)).resolves.toBe(userResponse);
+    await expect(usersController.registerSocial(dto)).resolves.toBe(authResponse);
     expect(usersService.registerSocial).toHaveBeenCalledWith(dto);
   });
 
   it('deve realizar login local', async () => {
     const dto = { email: 'maria@example.com', password: 'senha123' } as LoginDto;
-    usersService.login.mockResolvedValue(userResponse);
+    usersService.login.mockResolvedValue(authResponse);
 
-    await expect(usersController.login(dto)).resolves.toBe(userResponse);
+    await expect(usersController.login(dto)).resolves.toBe(authResponse);
     expect(usersService.login).toHaveBeenCalledWith(dto);
   });
 
   it('deve realizar login social', async () => {
     const dto = { idToken: 'firebase-token' } as LoginSocialDto;
-    usersService.loginSocial.mockResolvedValue(userResponse);
+    usersService.loginSocial.mockResolvedValue(authResponse);
 
-    await expect(usersController.loginSocial(dto)).resolves.toBe(userResponse);
+    await expect(usersController.loginSocial(dto)).resolves.toBe(authResponse);
     expect(usersService.loginSocial).toHaveBeenCalledWith(dto);
   });
 

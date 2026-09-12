@@ -1,6 +1,7 @@
 import { Controller, Get, Inject, Logger, ServiceUnavailableException } from '@nestjs/common';
 import { Pool } from 'pg';
 import { PG_POOL } from '../database/database.constants';
+import { Public } from '../auth/public.decorator';
 
 @Controller('health')
 export class HealthController {
@@ -8,6 +9,7 @@ export class HealthController {
 
   constructor(@Inject(PG_POOL) private readonly pool: Pool) {}
 
+  @Public()
   @Get()
   async check() {
     try {
