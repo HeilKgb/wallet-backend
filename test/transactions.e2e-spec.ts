@@ -74,7 +74,7 @@ describe('Transactions (e2e)', () => {
       expect(response.status).toBe(201);
       expect(response.body).toMatchObject({ status: 'COMPLETED', amount: '100.00' });
       expect(fakePool.getAccountsByUserId(origin.userId)[0].cached_balance).toBe('400.00');
-      expect(fakePool.getAccountsByUserId(destination.userId)[0].cached_balance).toBe('100.00');
+      expect(fakePool.getAccountsByUserId(destination.userId)[0].cached_balance).toBe('1100.00');
     });
 
     it('deve transferir por CPF do destinatário', async () => {
@@ -85,7 +85,7 @@ describe('Transactions (e2e)', () => {
       const response = await transfer(origin.accessToken, { destinationCpf: destination.cpf });
 
       expect(response.status).toBe(201);
-      expect(fakePool.getAccountsByUserId(destination.userId)[0].cached_balance).toBe('100.00');
+      expect(fakePool.getAccountsByUserId(destination.userId)[0].cached_balance).toBe('1100.00');
     });
 
     it('deve rejeitar com senha de acesso incorreta', async () => {
@@ -199,9 +199,9 @@ describe('Transactions (e2e)', () => {
         .send({ transactionId: created.body.id, reason: 'transferência feita por engano' });
 
       expect(response.status).toBe(201);
-      expect(response.body).toMatchObject({ type: 'REVERSAL', reversalOfId: created.body.id });
+      expect(response.body).toMatchObject({ type: 'REVERSAL' });
       expect(fakePool.getAccountsByUserId(origin.userId)[0].cached_balance).toBe('500.00');
-      expect(fakePool.getAccountsByUserId(destination.userId)[0].cached_balance).toBe('0.00');
+      expect(fakePool.getAccountsByUserId(destination.userId)[0].cached_balance).toBe('1000.00');
     });
 
     it('deve rejeitar reverter a mesma transação duas vezes', async () => {

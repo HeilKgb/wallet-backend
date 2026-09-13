@@ -60,7 +60,7 @@ describe('Users (e2e)', () => {
 
       const accounts = fakePool.getAccountsByUserId(response.body.user.id);
       expect(accounts).toHaveLength(1);
-      expect(accounts[0]).toMatchObject({ currency: 'BRL', cached_balance: '0.00', status: 'ACTIVE' });
+      expect(accounts[0]).toMatchObject({ currency: 'BRL', cached_balance: '1000.00', status: 'ACTIVE' });
     });
 
     it('deve rejeitar cadastro com e-mail inválido', async () => {

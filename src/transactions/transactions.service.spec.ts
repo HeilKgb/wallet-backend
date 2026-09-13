@@ -162,6 +162,20 @@ describe('TransactionsService', () => {
       expect(client.query).toHaveBeenCalledWith('ROLLBACK');
     });
 
+    it('deve verificar o saldo antes de buscar a conta de destino', async () => {
+      const client = createMockClient([
+        { rows: [] }, // BEGIN
+        { rows: [{ ...sourceAccount, cached_balance: '50.00' }] }, // SELECT origem FOR UPDATE
+        { rows: [] }, // SELECT idempotência (nenhuma existente)
+      ]);
+      pool.connect.mockResolvedValue(client);
+
+      await expect(service.createTransfer(userId, buildTransferDto())).rejects.toThrow(
+        'saldo insuficiente para realizar a transferência',
+      );
+      expect(client.query).not.toHaveBeenCalledWith(expect.stringContaining('account_number = $1'), expect.anything());
+    });
+
     it('deve rejeitar quando a conta de origem não existir', async () => {
       const client = createMockClient([{ rows: [] }, { rows: [] }]);
       pool.connect.mockResolvedValue(client);

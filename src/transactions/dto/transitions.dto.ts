@@ -61,9 +61,8 @@ export class CreateReversalRequestDto {
   @IsUUID('4', { message: 'transactionId deve ser um UUID válido' })
   transactionId: string;
 
-  @IsString()
-  @MinLength(10, { message: 'descreva o motivo da reversão com mais detalhes (mín. 10 caracteres)' })
-  reason: string;
+  @IsString({ message: 'caso deseje, descreva o motivo da reversão com mais detalhes.' })
+  reason?: string;
 }
 
 export class ReviewReversalRequestDto {

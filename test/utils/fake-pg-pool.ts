@@ -41,6 +41,7 @@ interface TransactionRow {
   destination_account_id: string | null;
   reversal_of_id: string | null;
   idempotency_key: string | null;
+  initiated_by_id: string;
   created_at: Date;
   completed_at: Date | null;
 }
@@ -290,16 +291,8 @@ export class FakePgPool {
   }
 
   private insertTransaction(params: unknown[], mode: 'idempotency_key' | 'reversal_of_id'): QueryResult<TransactionRow> {
-    const [type, status, amount, currency, descriptionOrReason, originAccountId, destinationAccountId, extra] = params as [
-      string,
-      string,
-      string,
-      string,
-      string | null,
-      string,
-      string,
-      string | null,
-    ];
+    const [type, status, amount, currency, descriptionOrReason, originAccountId, destinationAccountId, extra, initiatedById] =
+      params as [string, string, string, string, string | null, string, string, string | null, string];
     const row: TransactionRow = {
       id: randomUUID(),
       type,
@@ -311,6 +304,7 @@ export class FakePgPool {
       destination_account_id: destinationAccountId,
       reversal_of_id: mode === 'reversal_of_id' ? extra : null,
       idempotency_key: mode === 'idempotency_key' ? extra : null,
+      initiated_by_id: initiatedById,
       created_at: new Date(),
       completed_at: new Date(),
     };

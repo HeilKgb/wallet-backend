@@ -1,12 +1,13 @@
 import { randomBytes, randomInt, scrypt as _scrypt, timingSafeEqual } from 'node:crypto';
 import { promisify } from 'node:util';
-import { ConflictException, ForbiddenException, Inject, Injectable, NotFoundException, NotImplementedException, UnauthorizedException } from '@nestjs/common';
+import { ConflictException, ForbiddenException, Inject, Injectable, Logger, NotFoundException, NotImplementedException, UnauthorizedException } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
 import { Pool } from 'pg';
 import { PG_POOL } from '../database/database.constants';
 import { AccountStatus, AuthProvider, UserStatus } from '../common/enums';
 import { AuthResponseDto } from '../auth/dto/auth-response.dto';
 import { TokenService } from '../auth/token.service';
+import { maskCpf, maskEmail } from '../common/utils/log-mask.util';
 import { LoginDto, LoginSocialDto, RegisterLocalDto, RegisterSocialDto, UpdateUserDto, UserResponseDto } from './dto/login.dto';
 
 const scrypt = promisify(_scrypt);
@@ -26,12 +27,16 @@ interface UserRow {
 
 @Injectable()
 export class UsersService {
+  private readonly logger = new Logger(UsersService.name);
+
   constructor(
     @Inject(PG_POOL) private readonly pool: Pool,
     private readonly tokenService: TokenService,
   ) {}
 
   async registerLocal(dto: RegisterLocalDto): Promise<AuthResponseDto> {
+    this.logger.log(`Registro solicitado: email=${maskEmail(dto.email)} cpf=${maskCpf(dto.cpf)}`);
+
     const passwordHash = await this.hashPassword(dto.password);
     const client = await this.pool.connect();
 
@@ -40,7 +45,7 @@ export class UsersService {
 
       const userResult = await client.query<UserRow>(
         `INSERT INTO users (full_name, email, cpf, phone_number, password_hash, auth_provider, status)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
          RETURNING *`,
         [dto.fullName, dto.email, dto.cpf, dto.phoneNumber, passwordHash, AuthProvider.LOCAL, UserStatus.ACTIVE],
       );
@@ -49,18 +54,22 @@ export class UsersService {
       await client.query(
         `INSERT INTO accounts (user_id, account_number, currency, cached_balance, status)
         VALUES ($1, $2, $3, $4, $5)`,
-        [user.id, this.generateAccountNumber(), 'BRL', '0.00', AccountStatus.ACTIVE],
+        [user.id, this.generateAccountNumber(), 'BRL', '1000.00', AccountStatus.ACTIVE],
       );
 
       await client.query('COMMIT');
+      this.logger.log(`Usuário registrado com sucesso: userId=${user.id}`);
       return this.toAuthResponse(user);
     } catch (error: unknown) {
       await client.query('ROLLBACK');
-      throw this.mapUniqueViolation(error);
+      throw this.mapUniqueViolation(error, { operation: 'registerLocal', email: maskEmail(dto.email) });
     } finally {
       client.release();
     }
   }
+private generateAccountNumber(): string {
+  return randomInt(1_000_000_000, 9_999_999_999).toString();
+}
 
   async registerSocial(_dto: RegisterSocialDto): Promise<AuthResponseDto> {
     // Requer firebase-admin para validar o idToken e extrair uid/provider com segurança.
@@ -74,13 +83,16 @@ export class UsersService {
     const passwordHash = user?.password_hash;
     const passwordMatches = passwordHash ? await this.verifyPassword(dto.password, passwordHash) : false;
     if (!passwordMatches) {
+      this.logger.warn(`Login falhou (credenciais inválidas): email=${maskEmail(dto.email)}`);
       throw new UnauthorizedException('email ou senha inválidos');
     }
 
     if (user.status === UserStatus.BLOCKED) {
+      this.logger.warn(`Login negado (usuário bloqueado): userId=${user.id}`);
       throw new ForbiddenException('usuário bloqueado');
     }
 
+    this.logger.log(`Login bem-sucedido: userId=${user.id}`);
     return this.toAuthResponse(user);
   }
 
@@ -96,6 +108,7 @@ export class UsersService {
 
     const passwordMatches = user?.password_hash ? await this.verifyPassword(password, user.password_hash) : false;
     if (!passwordMatches) {
+      this.logger.warn(`Reautenticação falhou (ação sensível bloqueada): userId=${id}`);
       throw new UnauthorizedException('senha inválida');
     }
   }
@@ -129,7 +142,7 @@ export class UsersService {
 
       return this.toResponseDto(result.rows[0]);
     } catch (error: unknown) {
-      throw this.mapUniqueViolation(error);
+      throw this.mapUniqueViolation(error, { operation: 'update', userId: id });
     }
   }
 
@@ -153,10 +166,6 @@ export class UsersService {
     const user = this.toResponseDto(row);
     const { accessToken, refreshToken } = await this.tokenService.issueTokenPair(user.id, user.email);
     return { user, accessToken, refreshToken };
-  }
-
-  private generateAccountNumber(): string {
-    return randomInt(1_000_000_000, 9_999_999_999).toString();
   }
 
   private async hashPassword(password: string): Promise<string> {
@@ -195,10 +204,17 @@ export class UsersService {
     );
   }
 
-  private mapUniqueViolation(error: unknown): unknown {
+  private mapUniqueViolation(error: unknown, context: Record<string, unknown>): unknown {
     if (error && typeof error === 'object' && 'code' in error && (error as { code: string }).code === '23505') {
+      this.logger.warn(`Cadastro rejeitado (email/CPF duplicado): ${JSON.stringify(context)}`);
       return new ConflictException('email ou CPF já cadastrado');
     }
+
+    const pgError = error as Error & { code?: string; detail?: string };
+    this.logger.error(
+      `Erro inesperado em operação de usuário | contexto=${JSON.stringify(context)} | causa="${pgError?.message}" pgCode=${pgError?.code} detail=${pgError?.detail}`,
+      pgError?.stack,
+    );
     return error;
   }
 }
