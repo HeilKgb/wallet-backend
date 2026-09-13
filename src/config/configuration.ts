@@ -5,6 +5,7 @@ export interface AppConfig {
   auth: {
     jwtSecret: string;
     jwtExpiresInSeconds: number;
+    refreshTokenExpiresInSeconds: number;
   };
   database: {
     connectionString?: string;
@@ -34,6 +35,8 @@ const configuration = (): AppConfig => {
       // Gerado aleatoriamente por processo, nunca compartilhado nem versionado.
       jwtSecret: jwtSecret ?? randomBytes(32).toString('hex'),
       jwtExpiresInSeconds: Number.parseInt(process.env.JWT_EXPIRES_IN_SECONDS ?? '900', 10),
+      // Default: 30 dias.
+      refreshTokenExpiresInSeconds: Number.parseInt(process.env.REFRESH_TOKEN_EXPIRES_IN_SECONDS ?? '2592000', 10),
     },
     database: {
       // Se DATABASE_URL estiver definida, ela tem prioridade (ex: ambientes gerenciados como Render/Railway/RDS).

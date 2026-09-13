@@ -9,6 +9,7 @@ import { DatabaseModule } from './database/database.module';
 import { UsersModule } from './users/users.module';
 import { AuthModule } from './auth/auth.module';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
+import { TransactionsModule } from './transactions/transactions.module';
 
 // export const { ObserveModule, ObserveInstrument } = createObserveModule();
 
@@ -28,6 +29,7 @@ import { JwtAuthGuard } from './auth/jwt-auth.guard';
     DatabaseModule,
     AuthModule,
     UsersModule,
+    TransactionsModule,
   ],
   controllers: [AppController],
   providers: [
