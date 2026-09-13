@@ -10,6 +10,7 @@ import { FakePgPool } from './utils/fake-pg-pool';
 describe('Transactions (e2e)', () => {
   let app: INestApplication<App>;
   let fakePool: FakePgPool;
+  let cpfSequence = 10_000_000_000;
 
   const password = 'senha123';
 
@@ -37,7 +38,7 @@ describe('Transactions (e2e)', () => {
       fullName: 'Usuário Teste',
       email: `user-${randomUUID()}@example.com`,
       password,
-      cpf: overrides.cpf ?? String(Math.floor(10_000_000_000 + Math.random() * 89_999_999_999)),
+      cpf: overrides.cpf ?? String(cpfSequence++),
       phoneNumber: '5511999999999',
       ...overrides,
     };
@@ -199,7 +200,7 @@ describe('Transactions (e2e)', () => {
         .send({ transactionId: created.body.id, reason: 'transferência feita por engano' });
 
       expect(response.status).toBe(201);
-      expect(response.body).toMatchObject({ type: 'REVERSAL' });
+      expect(response.body).toMatchObject({ type: 'REVERSAL', reversalOfId: created.body.id });
       expect(fakePool.getAccountsByUserId(origin.userId)[0].cached_balance).toBe('500.00');
       expect(fakePool.getAccountsByUserId(destination.userId)[0].cached_balance).toBe('1000.00');
     });
@@ -236,6 +237,21 @@ describe('Transactions (e2e)', () => {
         .send({ transactionId: created.body.id, reason: 'tentando reverter transação alheia' });
 
       expect(response.status).toBe(404);
+    });
+
+    it('deve aceitar reversão sem reason', async () => {
+      const origin = await registerUser();
+      const destination = await registerUser();
+      fakePool.fundAccount(origin.userId, '500.00');
+      const created = await transfer(origin.accessToken, { destinationAccountNumber: destination.accountNumber });
+
+      const response = await request(app.getHttpServer())
+        .post('/transactions/reversals')
+        .set('Authorization', `Bearer ${origin.accessToken}`)
+        .send({ transactionId: created.body.id });
+
+      expect(response.status).toBe(201);
+      expect(response.body).toMatchObject({ type: 'REVERSAL', reversalOfId: created.body.id });
     });
   });
 });

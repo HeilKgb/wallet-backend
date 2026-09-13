@@ -62,6 +62,7 @@ export class CreateReversalRequestDto {
   transactionId: string;
 
   @IsString({ message: 'caso deseje, descreva o motivo da reversão com mais detalhes.' })
+  @IsOptional()
   reason?: string;
 }
 

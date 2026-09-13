@@ -34,7 +34,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
       // 5xx = bug ou falha de infraestrutura: precisa do stack trace completo pra investigar.
       const stack = exception instanceof Error ? exception.stack : undefined;
       const cause = this.describeCause(exception);
-      this.logger.error(`${context} -> 500 | causa: ${cause}`, stack);
+      this.logger.error(`${context} -> ${status} | causa: ${cause}`, stack);
     } else if (status >= HttpStatus.BAD_REQUEST) {
       // 4xx = erro esperado do cliente (validação, regra de negócio) - vale logar em nível
       // mais baixo pra não poluir, mas ainda é útil pra auditoria (ex: tentativas repetidas).

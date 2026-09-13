@@ -70,7 +70,12 @@ export class FakePgPool {
   private accounts: AccountRow[] = [];
   private refreshTokens: RefreshTokenRow[] = [];
   private transactions: TransactionRow[] = [];
-  private snapshot: { users: UserRow[]; accounts: AccountRow[]; transactions: TransactionRow[] } | null = null;
+  private snapshot: {
+    users: UserRow[];
+    accounts: AccountRow[];
+    refreshTokens: RefreshTokenRow[];
+    transactions: TransactionRow[];
+  } | null = null;
 
   async query<T = unknown>(text: string, params: unknown[] = []): Promise<QueryResult<T>> {
     return this.execute<T>(text, params);
@@ -84,13 +89,44 @@ export class FakePgPool {
   }
 
   /** Exigido pelo DatabaseModule.onApplicationShutdown ao encerrar a aplicação nos testes. */
-  async end(): Promise<void> {}
+  end(): Promise<void> {
+    this.snapshot = null;
+    this.users = [];
+    this.accounts = [];
+    this.refreshTokens = [];
+    this.transactions = [];
+    return Promise.resolve();
+  }
 
   private async execute<T>(text: string, params: unknown[]): Promise<QueryResult<T>> {
     const sql = text.trim();
+    const result =
+      this.handleTransactionControl<T>(sql) ??
+      this.handleInsertStatements<T>(sql, params) ??
+      this.handleUserStatements<T>(sql, params) ??
+      this.handleRefreshTokenStatements<T>(sql, params) ??
+      this.handleAccountStatements<T>(sql, params) ??
+      this.handleTransactionStatements<T>(sql, params);
 
+    if (result) {
+      return result;
+    }
+
+    throw new Error(`FakePgPool: query não suportada: ${sql}`);
+  }
+
+  private handleTransactionControl<T>(sql: string): QueryResult<T> | null {
     if (sql.startsWith('BEGIN')) {
-      this.snapshot = { users: [...this.users], accounts: [...this.accounts], transactions: [...this.transactions] };
+      this.snapshot = {
+        users: this.users.map((user) => ({ ...user, created_at: new Date(user.created_at) })),
+        accounts: this.accounts.map((account) => ({ ...account })),
+        refreshTokens: this.refreshTokens.map((token) => ({ ...token, expires_at: new Date(token.expires_at) })),
+        transactions: this.transactions.map((transaction) => ({
+          ...transaction,
+          created_at: new Date(transaction.created_at),
+          completed_at: transaction.completed_at ? new Date(transaction.completed_at) : null,
+        })),
+      };
       return { rows: [] as T[] };
     }
 
@@ -103,12 +139,17 @@ export class FakePgPool {
       if (this.snapshot) {
         this.users = this.snapshot.users;
         this.accounts = this.snapshot.accounts;
+        this.refreshTokens = this.snapshot.refreshTokens;
         this.transactions = this.snapshot.transactions;
         this.snapshot = null;
       }
       return { rows: [] as T[] };
     }
 
+    return null;
+  }
+
+  private handleInsertStatements<T>(sql: string, params: unknown[]): QueryResult<T> | null {
     if (sql.startsWith('INSERT INTO users')) {
       return this.insertUser(params) as QueryResult<T>;
     }
@@ -117,6 +158,22 @@ export class FakePgPool {
       return this.insertAccount(params) as QueryResult<T>;
     }
 
+    if (sql.startsWith('INSERT INTO refresh_tokens')) {
+      return this.insertRefreshToken(params) as QueryResult<T>;
+    }
+
+    if (sql.startsWith('INSERT INTO transactions') && sql.includes('reversal_of_id, idempotency_key')) {
+      return this.insertTransaction(params, 'reversal_of_id') as QueryResult<T>;
+    }
+
+    if (sql.startsWith('INSERT INTO transactions') && sql.includes('idempotency_key')) {
+      return this.insertTransaction(params, 'idempotency_key') as QueryResult<T>;
+    }
+
+    return null;
+  }
+
+  private handleUserStatements<T>(sql: string, params: unknown[]): QueryResult<T> | null {
     if (sql.includes('SELECT * FROM users WHERE email')) {
       const [email] = params as [string];
       const found = this.users.find((user) => user.email === email);
@@ -137,10 +194,10 @@ export class FakePgPool {
       return this.updateStatus(params) as QueryResult<T>;
     }
 
-    if (sql.startsWith('INSERT INTO refresh_tokens')) {
-      return this.insertRefreshToken(params) as QueryResult<T>;
-    }
+    return null;
+  }
 
+  private handleRefreshTokenStatements<T>(sql: string, params: unknown[]): QueryResult<T> | null {
     if (sql.includes('FROM refresh_tokens rt') && sql.includes('JOIN users u')) {
       const [tokenHash] = params as [string];
       const row = this.refreshTokens.find((token) => token.token_hash === tokenHash);
@@ -148,6 +205,7 @@ export class FakePgPool {
       if (!row || !user) {
         return { rows: [] as T[] };
       }
+
       return {
         rows: [
           {
@@ -187,17 +245,13 @@ export class FakePgPool {
       return { rows: [] as T[] };
     }
 
+    return null;
+  }
+
+  private handleAccountStatements<T>(sql: string, params: unknown[]): QueryResult<T> | null {
     if (sql.includes('FROM accounts') && sql.includes('WHERE user_id = $1 AND status = $2')) {
       const [ownerUserId, status] = params as [string, string];
       const found = this.accounts.find((account) => account.user_id === ownerUserId && account.status === status);
-      return { rows: (found ? [found] : []) as T[] };
-    }
-
-    if (sql.includes('FROM transactions') && sql.includes('WHERE idempotency_key = $1 AND origin_account_id = $2')) {
-      const [idempotencyKey, originAccountId] = params as [string, string];
-      const found = this.transactions.find(
-        (transaction) => transaction.idempotency_key === idempotencyKey && transaction.origin_account_id === originAccountId,
-      );
       return { rows: (found ? [found] : []) as T[] };
     }
 
@@ -234,12 +288,16 @@ export class FakePgPool {
       return { rows: [] as T[], rowCount: 1 };
     }
 
-    if (sql.startsWith('INSERT INTO transactions') && sql.includes('idempotency_key')) {
-      return this.insertTransaction(params, 'idempotency_key') as QueryResult<T>;
-    }
+    return null;
+  }
 
-    if (sql.startsWith('INSERT INTO transactions') && sql.includes('reversal_of_id')) {
-      return this.insertTransaction(params, 'reversal_of_id') as QueryResult<T>;
+  private handleTransactionStatements<T>(sql: string, params: unknown[]): QueryResult<T> | null {
+    if (sql.includes('FROM transactions') && sql.includes('WHERE idempotency_key = $1 AND origin_account_id = $2')) {
+      const [idempotencyKey, originAccountId] = params as [string, string];
+      const found = this.transactions.find(
+        (transaction) => transaction.idempotency_key === idempotencyKey && transaction.origin_account_id === originAccountId,
+      );
+      return { rows: (found ? [found] : []) as T[] };
     }
 
     if (sql.startsWith('SELECT id, type, status') && sql.includes('ORDER BY created_at DESC')) {
@@ -279,7 +337,7 @@ export class FakePgPool {
       return { rows: (found ? [found] : []) as T[] };
     }
 
-    throw new Error(`FakePgPool: query não suportada: ${sql}`);
+    return null;
   }
 
   private toCents(amount: string): number {

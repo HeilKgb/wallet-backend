@@ -90,15 +90,15 @@ export class TransactionsService {
         return this.toResponseDto(existingResult.rows[0]);
       }
 
-      if (this.toCents(source.cached_balance) < this.toCents(dto.amount)) {
-        throw new ConflictException('saldo insuficiente para realizar a transferência');
-      }
-
       if (!dto.destinationAccountNumber && !dto.destinationCpf) {
         throw new BadRequestException('informe o número da conta ou o CPF do destinatário');
       }
       if (dto.destinationAccountNumber && dto.destinationCpf) {
         throw new BadRequestException('informe apenas um identificador de destino: conta ou CPF');
+      }
+
+      if (this.toCents(source.cached_balance) < this.toCents(dto.amount)) {
+        throw new ConflictException('saldo insuficiente para realizar a transferência');
       }
 
       const destinationResult = dto.destinationCpf
