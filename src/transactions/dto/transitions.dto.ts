@@ -1,13 +1,20 @@
-import { IsDecimal, IsIn, IsOptional, IsString, IsUUID, Matches, MaxLength, MinLength } from 'class-validator';
+import { IsDecimal, IsIn, IsOptional, IsString, IsUUID, Matches, MaxLength, MinLength, ValidateIf } from 'class-validator';
 import { TransactionType } from '../../common/enums/transaction-type.enum';
 import { TransactionStatus } from '../../common/enums/transaction-status.enum';
 import { Exclude, Expose } from 'class-transformer';
 
 
 export class CreateTransferDto {
+  // Exatamente um dos dois identificadores de destino deve ser informado (validado no service).
+  @ValidateIf((dto: CreateTransferDto) => !dto.destinationCpf)
   @IsString()
   @Matches(/^\d+$/, { message: 'número da conta deve conter apenas dígitos' })
-  destinationAccountNumber: string;
+  destinationAccountNumber?: string;
+
+  @ValidateIf((dto: CreateTransferDto) => !dto.destinationAccountNumber)
+  @IsString()
+  @Matches(/^\d{11}$/, { message: 'CPF deve conter 11 dígitos' })
+  destinationCpf?: string;
 
   @IsDecimal({ decimal_digits: '0,2', force_decimal: false }, { message: 'valor deve ter no máximo 2 casas decimais' })
   @Matches(/^(?!0+(?:\.0{1,2})?$)\d+(?:\.\d{1,2})?$/, {
@@ -27,6 +34,11 @@ export class CreateTransferDto {
    */
   @IsUUID('4', { message: 'idempotencyKey deve ser um UUID v4' })
   idempotencyKey: string;
+
+  /** Senha de acesso do usuário autenticado, exigida para confirmar a transferência. */
+  @IsString()
+  @MinLength(1, { message: 'senha é obrigatória' })
+  password: string;
 }
 
 

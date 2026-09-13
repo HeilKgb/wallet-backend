@@ -1,12 +1,12 @@
 import { randomBytes, randomInt, scrypt as _scrypt, timingSafeEqual } from 'node:crypto';
 import { promisify } from 'node:util';
 import { ConflictException, ForbiddenException, Inject, Injectable, NotFoundException, NotImplementedException, UnauthorizedException } from '@nestjs/common';
-import { JwtService } from '@nestjs/jwt';
 import { plainToInstance } from 'class-transformer';
 import { Pool } from 'pg';
 import { PG_POOL } from '../database/database.constants';
 import { AccountStatus, AuthProvider, UserStatus } from '../common/enums';
 import { AuthResponseDto } from '../auth/dto/auth-response.dto';
+import { TokenService } from '../auth/token.service';
 import { LoginDto, LoginSocialDto, RegisterLocalDto, RegisterSocialDto, UpdateUserDto, UserResponseDto } from './dto/login.dto';
 
 const scrypt = promisify(_scrypt);
@@ -28,7 +28,7 @@ interface UserRow {
 export class UsersService {
   constructor(
     @Inject(PG_POOL) private readonly pool: Pool,
-    private readonly jwtService: JwtService,
+    private readonly tokenService: TokenService,
   ) {}
 
   async registerLocal(dto: RegisterLocalDto): Promise<AuthResponseDto> {
@@ -89,6 +89,17 @@ export class UsersService {
     throw new NotImplementedException('Login social ainda não está configurado');
   }
 
+  /** Confirma a senha de acesso do usuário autenticado; usado para reautenticar ações sensíveis (ex: transferências). */
+  async verifyAccessPassword(id: string, password: string): Promise<void> {
+    const result = await this.pool.query<UserRow>('SELECT * FROM users WHERE id = $1', [id]);
+    const user = result.rows[0];
+
+    const passwordMatches = user?.password_hash ? await this.verifyPassword(password, user.password_hash) : false;
+    if (!passwordMatches) {
+      throw new UnauthorizedException('senha inválida');
+    }
+  }
+
   async findById(id: string): Promise<UserResponseDto> {
     const result = await this.pool.query<UserRow>('SELECT * FROM users WHERE id = $1', [id]);
     const user = result.rows[0];
@@ -140,8 +151,8 @@ export class UsersService {
 
   private async toAuthResponse(row: UserRow): Promise<AuthResponseDto> {
     const user = this.toResponseDto(row);
-    const accessToken = await this.jwtService.signAsync({ sub: user.id, email: user.email });
-    return { user, accessToken };
+    const { accessToken, refreshToken } = await this.tokenService.issueTokenPair(user.id, user.email);
+    return { user, accessToken, refreshToken };
   }
 
   private generateAccountNumber(): string {
